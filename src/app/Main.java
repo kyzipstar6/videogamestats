@@ -27,7 +27,7 @@ import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.chart.CategoryAxis;
 import javafx.scene.chart.NumberAxis;
-import javafx.scene.chart.StackedAreaChart;
+import javafx.scene.chart.BarChart;
 import javafx.scene.chart.XYChart;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
@@ -40,6 +40,7 @@ import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.layout.Background;
+import javafx.scene.layout.BackgroundFill;
 import javafx.scene.layout.BackgroundImage;
 import javafx.scene.layout.BackgroundPosition;
 import javafx.scene.layout.BackgroundRepeat;
@@ -55,6 +56,7 @@ import javafx.scene.image.Image;
 import javafx.scene.paint.Color;
 import javafx.scene.control.Separator;
 import javafx.scene.text.Font;
+import javafx.scene.layout.Region;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 
@@ -70,17 +72,20 @@ public class Main extends Application {
     };
 
     private final List<GameRecord> records = new ArrayList<GameRecord>();
+    private final List<ToggleButton> statToggles = new ArrayList<ToggleButton>();
     private BorderPane root;
-    private StackedAreaChart<String, Number> chart;
+    private BarChart<String, Number> chart;
     private HBox chartPeriods;
     private HBox statsPeriods;
-    private String selectedStat = STAT_NAMES[0];
     private String selectedPeriod = "Weekly";
     private Button[] tabs;
     private VBox chartPane;
     private VBox statsPane;
     private Label chartSubtitle;
+    private Label chartStatus;
     private Label progressSummary;
+    private Label sessionCount;
+    private Label[] statValueLabels;
     private String backgroundFileName;
 
     @Override
@@ -93,6 +98,9 @@ public class Main extends Application {
         tabs = new Button[] { new Button("CHARTS"), new Button("STATS") };
         Button addData = new Button("+  ADD DATA");
         Button settings = new Button("⚙  BACKGROUND");
+        addData.setStyle(tabs[0].getStyle());
+                settings.setStyle(tabs[0].getStyle());
+
         HBox tabsBox = new HBox(10);
         tabsBox.setAlignment(Pos.CENTER_LEFT);
         tabsBox.setPadding(new Insets(0, 0, 18, 0));
@@ -117,16 +125,42 @@ public class Main extends Application {
         root.setTop(tabsBox);
         showTab(0);
 
-        Scene scene = new Scene(root, 1120, 760);
+        Scene scene = new Scene(root);
         stage.setTitle("GAME//TRACK — Videogame Stats");
         stage.setMinWidth(760);
         stage.setMinHeight(600);
         stage.setScene(scene);
         stage.show();
+        askNickNameForFirstTime();
         refreshStats();
         if (loadError != null) {
             showValidationError(loadError);
         }
+    }
+    String nickname = "";
+    private void askNickNameForFirstTime(){
+        File nf = new File("settings.gs");
+        if (!nf.exists()){
+            Stage stg = new Stage();
+            TextField tf = new TextField();
+            tf.setPromptText("Enter nickname");
+            Button done = new Button("Done");
+            HBox hb = new HBox(5,tf,done);
+            Scene sc = new Scene(hb);
+            stg.setScene(sc);
+            stg.showAndWait();
+            done.setOnAction(ev->{
+                try{
+                    Files.writeString(nf.toPath(), tf.getText(), StandardCharsets.UTF_8);
+                } catch(IOException ex){
+
+                }
+            });
+        }
+        else nickname= new String(Files.readAllBytes(nf.toPath()));
+    }
+    private void pullSource(){
+
     }
     public void pushSource(){
       StringBuilder bd = new StringBuilder();
@@ -161,22 +195,25 @@ public class Main extends Application {
 
         Label heading = new Label("YOUR FIELD RECORD");
         heading.setStyle("-fx-text-fill: #f2f5ff; -fx-font-size: 24px; -fx-font-weight: bold;");
-        chartSubtitle = new Label("Zombies killed  •  Weekly");
+        chartSubtitle = new Label();
         chartSubtitle.setStyle("-fx-text-fill: #9ba9c5; -fx-font-size: 13px;");
+        chartStatus = new Label();
+        chartStatus.setStyle("-fx-text-fill: #9ba9c5; -fx-font-size: 12px;");
 
         HBox statButtons = new HBox(8);
         statButtons.setAlignment(Pos.CENTER_LEFT);
+        statToggles.clear();
         for (String stat : STAT_NAMES) {
-            Button button = new Button(stat);
-            button.setStyle(chipStyle(stat.equals(selectedStat)));
+            ToggleButton button = new ToggleButton(stat);
+            button.setSelected(stat.equals(STAT_NAMES[0]));
+            button.setStyle(chipStyle(button.isSelected()));
             button.setOnAction(event -> {
-                selectedStat = stat;
-                for (javafx.scene.Node node : statButtons.getChildren()) {
-                    Button candidate = (Button) node;
-                    candidate.setStyle(chipStyle(candidate.getText().equals(selectedStat)));
+                for (ToggleButton candidate : statToggles) {
+                    candidate.setStyle(chipStyle(candidate.isSelected()));
                 }
                 refreshChart();
             });
+            statToggles.add(button);
             statButtons.getChildren().add(button);
         }
         ScrollPane statScroller = new ScrollPane(statButtons);
@@ -210,14 +247,15 @@ public class Main extends Application {
         yAxis.setLabel("Total");
         yAxis.setForceZeroInRange(true);
         yAxis.setStyle("-fx-tick-label-fill: #b9c4dc; -fx-text-fill: #b9c4dc;");
-        chart = new StackedAreaChart<String, Number>(xAxis, yAxis);
+        chart = new BarChart<String, Number>(xAxis, yAxis);
         chart.setLegendVisible(false);
         chart.setAnimated(false);
         chart.setCreateSymbols(false);
-        chart.setStyle("-fx-background-color: transparent;");
+        chart.setStyle("-fx-background-color: transparent; -fx-plot-background-color: transparent;");
+        chart.setBackground(new Background(new BackgroundFill(Color.TRANSPARENT, null, null)));
         chart.setMinHeight(220);
 
-        pane.getChildren().addAll(heading, chartSubtitle, statScroller, chartPeriods, chart);
+        pane.getChildren().addAll(heading, chartSubtitle, chartStatus, statScroller, chartPeriods, chart);
         VBox.setVgrow(chart, Priority.ALWAYS);
         refreshChart();
         return pane;
@@ -230,8 +268,8 @@ public class Main extends Application {
 
         Label heading = new Label("CAMPAIGN SUMMARY");
         heading.setStyle("-fx-text-fill: #f2f5ff; -fx-font-size: 24px; -fx-font-weight: bold;");
-        Label intro = new Label("Your stats, tallied across every recorded session.");
-        intro.setStyle("-fx-text-fill: #9ba9c5; -fx-font-size: 13px;");
+        sessionCount = new Label();
+        sessionCount.setStyle("-fx-text-fill: #9ba9c5; -fx-font-size: 13px;");
 
         statsPeriods = new HBox(8);
         statsPeriods.setAlignment(Pos.CENTER_LEFT);
@@ -258,6 +296,7 @@ public class Main extends Application {
             cards.getColumnConstraints().add(constraints);
         }
 
+        statValueLabels = new Label[STAT_NAMES.length];
         int index = 0;
         for (String stat : STAT_NAMES) {
             VBox card = new VBox(8);
@@ -268,7 +307,7 @@ public class Main extends Application {
             Label name = new Label(stat.toUpperCase());
             name.setStyle("-fx-text-fill: #8fa0bf; -fx-font-size: 10px; -fx-font-weight: bold;");
             Label value = new Label("0");
-            value.setId("value-" + index);
+            statValueLabels[index] = value;
             value.setStyle("-fx-text-fill: #5ce1c6; -fx-font-size: 26px; -fx-font-weight: bold;");
             card.getChildren().addAll(name, value);
             cards.add(card, index % 2, index / 2);
@@ -289,7 +328,7 @@ public class Main extends Application {
         ScrollPane scroller = new ScrollPane(cards);
         scroller.setFitToWidth(true);
         scroller.setStyle("-fx-background: transparent; -fx-background-color: transparent;");
-        pane.getChildren().addAll(heading, intro, statsPeriods, scroller, progressCard);
+        pane.getChildren().addAll(heading, sessionCount, statsPeriods, scroller, progressCard);
         VBox.setVgrow(scroller, Priority.ALWAYS);
         return pane;
     }
@@ -675,12 +714,13 @@ public class Main extends Application {
         List<ChartBucket> buckets = createBuckets();
         ToDoubleFunction<GameRecord> metric = metricFor(selectedStat);
         List<String> categories = new ArrayList<String>();
+        boolean anyValueInPeriod = false;
+        int metricIndex = indexOfStat(selectedStat);
         for (ChartBucket bucket : buckets) {
             double total = 0;
             boolean hasValue = false;
             for (GameRecord record : records) {
                 if (!record.day.isBefore(bucket.start) && !record.day.isAfter(bucket.end)) {
-                    int metricIndex = indexOfStat(selectedStat);
                     if (record.hasValue[metricIndex]) {
                         total += metric.applyAsDouble(record);
                         hasValue = true;
@@ -690,9 +730,13 @@ public class Main extends Application {
             categories.add(bucket.label);
             series.getData().add(new XYChart.Data<String, Number>(
                     bucket.label, hasValue ? Double.valueOf(total) : null));
+            anyValueInPeriod |= hasValue;
         }
-        chart.getXAxis().setCategories(FXCollections.observableArrayList(categories));
+        ((CategoryAxis) chart.getXAxis()).setCategories(FXCollections.observableArrayList(categories));
         chart.getData().add(series);
+        chartStatus.setText(anyValueInPeriod
+                ? ""
+                : "No \"" + selectedStat + "\" values recorded in this " + selectedPeriod.toLowerCase() + ".");
     }
 
     private List<ChartBucket> createBuckets() {
@@ -734,6 +778,12 @@ public class Main extends Application {
         } else {
             start = today.withDayOfYear(1);
         }
+        int sessionsInPeriod = 0;
+        for (GameRecord record : records) {
+            if (!record.day.isBefore(start) && !record.day.isAfter(end)) {
+                sessionsInPeriod++;
+            }
+        }
         for (int i = 0; i < STAT_NAMES.length; i++) {
             double total = 0;
             ToDoubleFunction<GameRecord> metric = metricFor(STAT_NAMES[i]);
@@ -744,11 +794,10 @@ public class Main extends Application {
                     }
                 }
             }
-            Label value = (Label) statsPane.lookup("#value-" + i);
-            if (value != null) {
-                value.setText(formatTotal(total));
-            }
+            statValueLabels[i].setText(formatTotal(total));
         }
+        sessionCount.setText(records.size() + " sessions recorded · " + sessionsInPeriod
+                + " in this " + selectedPeriod.toLowerCase());
 
         List<String> lines = new ArrayList<String>();
         for (int i = records.size() - 1; i >= 0; i--) {
