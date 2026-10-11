@@ -30,7 +30,7 @@ import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.chart.CategoryAxis;
 import javafx.scene.chart.NumberAxis;
-import javafx.scene.chart.BarChart;
+import javafx.scene.chart.StackedAreaChart;
 import javafx.scene.chart.XYChart;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
@@ -77,7 +77,7 @@ public class Main extends Application {
     private final List<GameRecord> records = new ArrayList<GameRecord>();
     private final List<ToggleButton> statToggles = new ArrayList<ToggleButton>();
     private BorderPane root;
-    private BarChart chart;
+    private StackedAreaChart<String, Double> chart;
     private HBox chartPeriods;
     private HBox statsPeriods;
     private String selectedPeriod = "Weekly";
@@ -278,10 +278,10 @@ public class Main extends Application {
         yAxis.setLabel("Total");
         yAxis.setForceZeroInRange(true);
         yAxis.setStyle("-fx-tick-label-fill: #b9c4dc; -fx-text-fill: #b9c4dc;");
-        chart = new BarChart(xAxis, yAxis);
+        chart = new StackedAreaChart(xAxis, yAxis);
         chart.setLegendVisible(false);
         chart.setAnimated(false);
-        
+        chart.setCreateSymbols(false);
         chart.setStyle("-fx-background-color: transparent; -fx-plot-background-color: transparent;");
         chart.setBackground(new Background(new BackgroundFill(Color.TRANSPARENT, null, null)));
         chart.setMinHeight(220);
@@ -783,7 +783,7 @@ public class Main extends Application {
         AtomicReference<Double> minY = new AtomicReference<>(0.0);
         if(chart.getData()!=null)for(int i =0;i<chart.getData().size();i++){
             if(chart.getData().get(i)==null)continue;
-            XYChart.Series<String, Double> series =(XYChart.Series<String, Double>) chart.getData().get(i);
+            XYChart.Series<String, Double> series = chart.getData().get(i);
             for(int j=0;j<series.getData().size();j++){
                 XYChart.Data<String, Double> data = series.getData().get(j);
                 double val = data.getYValue()==null?0.0:Double.parseDouble(data.getYValue()+"");
