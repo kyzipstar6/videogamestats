@@ -21,6 +21,9 @@ import java.util.UUID;
 import java.util.function.ToDoubleFunction;
 
 import javafx.application.Application;
+import javafx.application.Platform;
+import java.util.concurrent.atomic.*;
+import javafx.scene.Node;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -74,7 +77,7 @@ public class Main extends Application {
     private final List<GameRecord> records = new ArrayList<GameRecord>();
     private final List<ToggleButton> statToggles = new ArrayList<ToggleButton>();
     private BorderPane root;
-    private BarChart<String, Number> chart;
+    private BarChart chart;
     private HBox chartPeriods;
     private HBox statsPeriods;
     private String selectedPeriod = "Weekly";
@@ -126,10 +129,11 @@ public class Main extends Application {
         showTab(0);
 
         Scene scene = new Scene(root);
-        stage.setTitle("GAME//TRACK — Videogame Stats");
+        stage.setTitle("Videogame Stats");
         stage.setMinWidth(760);
         stage.setMinHeight(600);
         stage.setScene(scene);
+        stage.setOnCloseRequest(e->pushStats());
         stage.show();
         askNickNameForFirstTime();
         refreshStats();
@@ -139,8 +143,12 @@ public class Main extends Application {
     }
     String nickname = "";
     private void askNickNameForFirstTime(){
-        File nf = new File("settings.gs");
-        if (!nf.exists()){
+       try{
+        Files.createDirectories(DATA_DIRECTORY);
+        Path temporaryFile = Files.createTempFile(DATA_DIRECTORY, "stats-"+nickname, ".tmp");
+        File nf = temporaryFile.toFile();
+        try{
+        
             Stage stg = new Stage();
             TextField tf = new TextField();
             tf.setPromptText("Enter nickname");
@@ -152,28 +160,28 @@ public class Main extends Application {
             done.setOnAction(ev->{
                 try{
                     Files.writeString(nf.toPath(), tf.getText(), StandardCharsets.UTF_8);
+                    
                 } catch(IOException ex){
-
+                    ex.printStackTrace();
                 }
+                stg.close();
             });
         }
-        else nickname= new String(Files.readAllBytes(nf.toPath()));
-    }
-    private void pullSource(){
-
-    }
-    public void pushSource(){
-      StringBuilder bd = new StringBuilder();
-      bd.append("git init"+ "\n");
-      bd.append("git add files"+ "\n");
-      bd.append("git commit -m \"first commit\""+ "\n");
-      bd.append("git branch -M main"+ "\n");
-      bd.append("git remote add origin https://github.com/kyzipstar6/videogamestats.git"+ "\n");
-      bd.append("git push -u origin main"+ "\n");
-      File nf = new File("push.bat");
+        catch(Exception ex){
+        nickname= new String(Files.readAllBytes(nf.toPath()));}
+    }catch(Exception ex){ex.printStackTrace();}
+    /* 
+    private void pullStats(){
+         Files.createDirectories(DATA_DIRECTORY);
+        Path temporaryFile = Files.createTempFile(DATA_DIRECTORY, "stats-"+nickname, ".tmp");
+        File nf = temporaryFile.toFile();
+        StringBuilder bd = new StringBuilder();
+      bd.append("git clone https://github.com/kyzipstar6/videogamestats.git"+ "\n");
+      
+      File nf = new File("pull.bat");
       try{
         Files.writeString(nf.toPath(), bd.toString(), StandardCharsets.UTF_8);
-        ProcessBuilder pb = new ProcessBuilder(".\\push.bat");
+        ProcessBuilder pb = new ProcessBuilder(".\\pull.bat");
         pb.redirectErrorStream(true);
         Process p = pb.start();
 
@@ -183,13 +191,37 @@ public class Main extends Application {
         nal.setContentText("Failed to update the cloud source code,"+"\n"+ex.getMessage());
         nal.showAndWait();
       }
-      Alert nal = new Alert(AlertType.CONFIRMATION);
-      nal.setContentText("Repository successfully updated");
-      nal.showAndWait();
     }
+      */
+}
+    public void pushStats(){
+        try{ Files.createDirectories(DATA_DIRECTORY);
+        Path temporaryFile = Files.createTempFile(DATA_DIRECTORY, "stats-"+nickname, ".tmp");
+        File nf = temporaryFile.toFile();
+      StringBuilder bd = new StringBuilder();
+      bd.append("git init"+ "\n");
+      bd.append("git add "+nf.getAbsolutePath()+ "\n");
+      bd.append("git commit -m \"first commit\""+ "\n");
+      bd.append("git branch -M main"+ "\n");
+      bd.append("git remote add origin https://github.com/kyzipstar6/videogamestats.git"+ "\n");
+      bd.append("git push -u origin main"+ "\n");
+      try{
+        Files.writeString(nf.toPath(), bd.toString(), StandardCharsets.UTF_8);
+        ProcessBuilder pb = new ProcessBuilder(".\\push.bat");
+        pb.redirectErrorStream(true);
+        Process p = pb.start();
 
+      }catch(Exception ex){
+        ex.printStackTrace();
+        
+      }
+      }catch(Exception ex){ex.printStackTrace();}
+    }
+    CategoryAxis xAxis = new CategoryAxis();
+    NumberAxis yAxis = new NumberAxis();
     private VBox buildChartPane() {
         VBox pane = new VBox(18);
+        try{
         pane.setPadding(new Insets(24));
         pane.setStyle(panelStyle());
 
@@ -205,13 +237,13 @@ public class Main extends Application {
         statToggles.clear();
         for (String stat : STAT_NAMES) {
             ToggleButton button = new ToggleButton(stat);
-            button.setSelected(stat.equals(STAT_NAMES[0]));
+           // button.setSelected(stat.equals(STAT_NAMES[0]));
             button.setStyle(chipStyle(button.isSelected()));
             button.setOnAction(event -> {
                 for (ToggleButton candidate : statToggles) {
                     candidate.setStyle(chipStyle(candidate.isSelected()));
                 }
-                refreshChart();
+                try{refreshChart();}catch(Exception ex){ex.printStackTrace();}
             });
             statToggles.add(button);
             statButtons.getChildren().add(button);
@@ -229,28 +261,27 @@ public class Main extends Application {
         chartPeriods.setAlignment(Pos.CENTER_LEFT);
         for (String period : new String[] { "Weekly", "Monthly", "Yearly" }) {
             ToggleButton button = new ToggleButton(period);
-            button.setSelected(period.equals(selectedPeriod));
             button.setStyle(chipStyle(button.isSelected()));
             button.setOnAction(event -> {
                 selectedPeriod = period;
                 syncPeriodButtons();
-                refreshChart();
+                try{refreshChart();}catch(Exception ex){ex.printStackTrace();}
                 refreshStats();
             });
             chartPeriods.getChildren().add(button);
         }
 
-        CategoryAxis xAxis = new CategoryAxis();
+        
         xAxis.setLabel("Date");
         xAxis.setStyle("-fx-tick-label-fill: #b9c4dc; -fx-text-fill: #b9c4dc;");
-        NumberAxis yAxis = new NumberAxis();
+        
         yAxis.setLabel("Total");
         yAxis.setForceZeroInRange(true);
         yAxis.setStyle("-fx-tick-label-fill: #b9c4dc; -fx-text-fill: #b9c4dc;");
-        chart = new BarChart<String, Number>(xAxis, yAxis);
+        chart = new BarChart(xAxis, yAxis);
         chart.setLegendVisible(false);
         chart.setAnimated(false);
-        chart.setCreateSymbols(false);
+        
         chart.setStyle("-fx-background-color: transparent; -fx-plot-background-color: transparent;");
         chart.setBackground(new Background(new BackgroundFill(Color.TRANSPARENT, null, null)));
         chart.setMinHeight(220);
@@ -258,6 +289,7 @@ public class Main extends Application {
         pane.getChildren().addAll(heading, chartSubtitle, chartStatus, statScroller, chartPeriods, chart);
         VBox.setVgrow(chart, Priority.ALWAYS);
         refreshChart();
+        }catch(Exception ex){ex.printStackTrace();}
         return pane;
     }
 
@@ -275,7 +307,7 @@ public class Main extends Application {
         statsPeriods.setAlignment(Pos.CENTER_LEFT);
         for (String period : new String[] { "Weekly", "Monthly", "Yearly" }) {
             ToggleButton button = new ToggleButton(period);
-            button.setSelected(period.equals(selectedPeriod));
+            button.setSelected(false);
             button.setStyle(chipStyle(period.equals(selectedPeriod)));
             button.setOnAction(event -> {
                 selectedPeriod = period;
@@ -339,7 +371,11 @@ public class Main extends Application {
         }
         root.setCenter(index == 0 ? chartPane : statsPane);
         if (index == 1) {
-            refreshStats();
+            try {
+                refreshStats();
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
         }
     }
 
@@ -636,7 +672,7 @@ public class Main extends Application {
 
     private void saveData() throws IOException {
         Files.createDirectories(DATA_DIRECTORY);
-        Path temporaryFile = Files.createTempFile(DATA_DIRECTORY, "stats-", ".tmp");
+        Path temporaryFile = Files.createTempFile(DATA_DIRECTORY, "stats-"+nickname, ".tmp");
         try {
             try (BufferedWriter writer = Files.newBufferedWriter(temporaryFile, StandardCharsets.UTF_8)) {
                 writer.write("VIDEOGAMESTATS\t1");
@@ -704,12 +740,14 @@ public class Main extends Application {
     }
 
     private void refreshChart() {
+        String selectedStat = "";
+        try{
         if (chart == null) {
             return;
         }
         chart.getData().clear();
         chartSubtitle.setText(selectedStat + "  •  " + selectedPeriod);
-        XYChart.Series<String, Number> series = new XYChart.Series<String, Number>();
+        XYChart.Series<String, Double> series = new XYChart.Series<String, Double>();
         series.setName(selectedStat);
         List<ChartBucket> buckets = createBuckets();
         ToDoubleFunction<GameRecord> metric = metricFor(selectedStat);
@@ -728,7 +766,7 @@ public class Main extends Application {
                 }
             }
             categories.add(bucket.label);
-            series.getData().add(new XYChart.Data<String, Number>(
+            series.getData().add(new XYChart.Data<String, Double>(
                     bucket.label, hasValue ? Double.valueOf(total) : null));
             anyValueInPeriod |= hasValue;
         }
@@ -737,6 +775,29 @@ public class Main extends Application {
         chartStatus.setText(anyValueInPeriod
                 ? ""
                 : "No \"" + selectedStat + "\" values recorded in this " + selectedPeriod.toLowerCase() + ".");
+              try{  Platform.runLater(()->updateBounds());}catch(Exception ex){ex.printStackTrace();}
+            }catch(Exception ex){ex.printStackTrace();}
+    }
+    void updateBounds(){try{
+        AtomicReference<Double> maxY = new AtomicReference<>(0.0);
+        AtomicReference<Double> minY = new AtomicReference<>(0.0);
+        if(chart.getData()!=null)for(int i =0;i<chart.getData().size();i++){
+            if(chart.getData().get(i)==null)continue;
+            XYChart.Series<String, Double> series =(XYChart.Series<String, Double>) chart.getData().get(i);
+            for(int j=0;j<series.getData().size();j++){
+                XYChart.Data<String, Double> data = series.getData().get(j);
+                double val = data.getYValue()==null?0.0:Double.parseDouble(data.getYValue()+"");
+                if(val>maxY.get()){
+                    maxY.set(val);
+                }
+                if(val<minY.get()){
+                    minY.set(val);
+                }
+                
+            }
+        }
+        yAxis.setLowerBound(minY.get());
+        yAxis.setUpperBound(maxY.get());}catch(Exception ex){ex.printStackTrace();}
     }
 
     private List<ChartBucket> createBuckets() {
@@ -825,20 +886,20 @@ public class Main extends Application {
                 return i;
             }
         }
-        throw new IllegalArgumentException("Unknown statistic: " + stat);
+        return 0;
     }
 
     private void syncPeriodButtons() {
-        HBox[] groups = { chartPeriods, statsPeriods };
-        for (HBox group : groups) {
-            if (group == null) {
-                continue;
-            }
-            for (javafx.scene.Node node : group.getChildren()) {
+        for (Node node : chartPeriods.getChildren()) {
+            if (node instanceof ToggleButton) {
                 ToggleButton button = (ToggleButton) node;
-                boolean selected = button.getText().equals(selectedPeriod);
-                button.setSelected(selected);
-                button.setStyle(chipStyle(selected));
+                button.setStyle(chipStyle(button.isSelected()));
+            }
+        }
+        for (Node node : statsPeriods.getChildren()) {
+            if (node instanceof ToggleButton) {
+                ToggleButton button = (ToggleButton) node;
+                button.setStyle(chipStyle(button.isSelected()));
             }
         }
     }
