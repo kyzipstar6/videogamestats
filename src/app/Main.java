@@ -148,7 +148,7 @@ public class Main extends Application {
         Path temporaryFile = Files.createTempFile(DATA_DIRECTORY, "stats-"+nickname, ".tmp");
         File nf = temporaryFile.toFile();
         try{
-        
+
             Stage stg = new Stage();
             TextField tf = new TextField();
             tf.setPromptText("Enter nickname");
@@ -158,26 +158,27 @@ public class Main extends Application {
             stg.setScene(sc);
             stg.showAndWait();
             done.setOnAction(ev->{
+              stg.close();
                 try{
                     Files.writeString(nf.toPath(), tf.getText(), StandardCharsets.UTF_8);
-                    
+
                 } catch(IOException ex){
                     ex.printStackTrace();
                 }
-                stg.close();
+
             });
         }
         catch(Exception ex){
         nickname= new String(Files.readAllBytes(nf.toPath()));}
     }catch(Exception ex){ex.printStackTrace();}
-    /* 
+    /*
     private void pullStats(){
          Files.createDirectories(DATA_DIRECTORY);
         Path temporaryFile = Files.createTempFile(DATA_DIRECTORY, "stats-"+nickname, ".tmp");
         File nf = temporaryFile.toFile();
         StringBuilder bd = new StringBuilder();
       bd.append("git clone https://github.com/kyzipstar6/videogamestats.git"+ "\n");
-      
+
       File nf = new File("pull.bat");
       try{
         Files.writeString(nf.toPath(), bd.toString(), StandardCharsets.UTF_8);
@@ -213,7 +214,7 @@ public class Main extends Application {
 
       }catch(Exception ex){
         ex.printStackTrace();
-        
+
       }
       }catch(Exception ex){ex.printStackTrace();}
     }
@@ -271,10 +272,10 @@ public class Main extends Application {
             chartPeriods.getChildren().add(button);
         }
 
-        
+
         xAxis.setLabel("Date");
         xAxis.setStyle("-fx-tick-label-fill: #b9c4dc; -fx-text-fill: #b9c4dc;");
-        
+
         yAxis.setLabel("Total");
         yAxis.setForceZeroInRange(true);
         yAxis.setStyle("-fx-tick-label-fill: #b9c4dc; -fx-text-fill: #b9c4dc;");
@@ -779,6 +780,7 @@ public class Main extends Application {
             }catch(Exception ex){ex.printStackTrace();}
     }
     void updateBounds(){try{
+      yAxis.setAutoRanging(false);
         AtomicReference<Double> maxY = new AtomicReference<>(0.0);
         AtomicReference<Double> minY = new AtomicReference<>(0.0);
         if(chart.getData()!=null)for(int i =0;i<chart.getData().size();i++){
@@ -793,7 +795,7 @@ public class Main extends Application {
                 if(val<minY.get()){
                     minY.set(val);
                 }
-                
+
             }
         }
         yAxis.setLowerBound(minY.get());
