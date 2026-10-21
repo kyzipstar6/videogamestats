@@ -1,5 +1,6 @@
+// ==================== Main.java ====================
 package app;
-
+import javafx.scene.chart.Axis;          
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -18,9 +19,11 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
+import javafx.scene.shape.*;
 
 import javafx.application.Application;
 import javafx.application.Platform;
+import javafx.beans.property.SimpleObjectProperty;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -52,6 +55,7 @@ import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Pane;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
@@ -60,6 +64,14 @@ import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
+
+import javafx.scene.layout.StackPane;
+import java.util.ArrayList;   // already there
+import java.util.List;        // already there
+import java.nio.file.Path;    // already there
+import java.nio.file.Paths;   // already there
+import java.nio.file.Files;   // already there
+import java.io.IOException;   // already there
 
 public class Main extends Application {
     private static final Path DATA_DIRECTORY = Paths.get(
@@ -70,18 +82,23 @@ public class Main extends Application {
         "XBox Gamer points", "Zombies killed", "Missions completed",
         "Humans killed", "Animals killed", "Animals hunted", "Aliens killed",
         "Time driven a car", "Time driven an aircraft", "Time driven a boat",
-        "Time played"
+        "Time played","Game of the day"
     };
+    static SimpleObjectProperty<GameRecord> selectedDay = new SimpleObjectProperty<>();
+    static SimpleObjectProperty<String> gameofdaybg =
+            new SimpleObjectProperty<>(toLocalPath("files/bgs/2.png","videogamestats"));
+    static final List<GameRecord> records = new ArrayList<>();
+    static VBox gamePrevis;
 
-    private final List<GameRecord> records = new ArrayList<>();
     private final List<ToggleButton> statToggles = new ArrayList<>();
     private BorderPane root;
-    private LineChart chart;
+    private VideoGamestatsLineChart<String,Double> chart;
+    private NumberAxis chartYAxis;           
     private HBox chartPeriods;
     private HBox statsPeriods;
     private String selectedPeriod = "Weekly";
     private Button[] tabs;
-    private VBox chartPane;
+    private Pane chartPane;
     private VBox statsPane;
     private Label chartSubtitle;
     private Label chartStatus;
@@ -91,10 +108,7 @@ public class Main extends Application {
     private Label[] statValueLabels;
     private String backgroundFileName;
     private String nickname = "";
-
-    // ============================================================
-    // JavaFX lifecycle
-    // ============================================================
+    private ScrollPane gamePrevisScroll;
 
     @Override
     public void start(Stage stage) {
@@ -150,9 +164,16 @@ public class Main extends Application {
         if (loadError != null) showValidationError(loadError);
     }
 
-    // ============================================================
-    // Nickname (fixed)
-    // ============================================================
+    // ---- Nickname ----
+    private static String toLocalPath(String relPath) {
+        String nfname = new File("").getAbsolutePath().replace("\\", "/").replace("//", "/");
+        return ("file:" + nfname + "/" + relPath).replace("java", "2026java").replace("//", "/");
+    }
+
+    private static String toLocalPath(String relPath, String projectname) {
+        String nfname = new File("").getAbsolutePath().replace("\\", "/").replace("//", "/");
+        return ("file:" + nfname + "/" + projectname + "/" + relPath).replace("java", "2026java").replace("//", "/");
+    }
 
     private void askNickname() {
         try {
@@ -187,101 +208,152 @@ public class Main extends Application {
         }
     }
 
-    // ============================================================
-    // Chart pane
-    // ============================================================
+    // ---- Chart pane ----
+    private Pane buildChartPane() {
+    VBox content = new VBox(18);
+    content.setPadding(new Insets(24));
+    content.setStyle(panelStyle());
 
-    private VBox buildChartPane() {
-        VBox pane = new VBox(18);
-        pane.setPadding(new Insets(24));
-        pane.setStyle(panelStyle());
+    // ---- header / toggles / axes / chart (unchanged, add to `content`) ----
+    Label heading = new Label("YOUR FIELD RECORD");
+    heading.setStyle("-fx-text-fill: #f2f5ff; -fx-font-size: 24px; -fx-font-weight: bold;");
 
-        Label heading = new Label("YOUR FIELD RECORD");
-        heading.setStyle("-fx-text-fill: #f2f5ff; -fx-font-size: 24px; -fx-font-weight: bold;");
+    chartSubtitle = new Label();
+    chartSubtitle.setStyle("-fx-text-fill: #9ba9c5; -fx-font-size: 13px;");
+    chartStatus = new Label();
+    chartStatus.setStyle("-fx-text-fill: #9ba9c5; -fx-font-size: 12px;");
 
-        chartSubtitle = new Label();
-        chartSubtitle.setStyle("-fx-text-fill: #9ba9c5; -fx-font-size: 13px;");
-        chartStatus = new Label();
-        chartStatus.setStyle("-fx-text-fill: #9ba9c5; -fx-font-size: 12px;");
+    HBox statButtons = new HBox(8);
+    statButtons.setAlignment(Pos.CENTER_LEFT);
+    ToggleGroup statGroup = new ToggleGroup();
+    statToggles.clear();
+    for (int i = 0; i < STAT_NAMES.length; i++) {
+        ToggleButton button = new ToggleButton(STAT_NAMES[i]);
+        button.setToggleGroup(statGroup);
+        button.setSelected(i == 0);
+        button.setStyle(chipStyle(button.isSelected()));
+        button.setOnAction(e -> {
+            if (!button.isSelected()) button.setSelected(true);
+            for (ToggleButton candidate : statToggles)
+                candidate.setStyle(chipStyle(candidate.isSelected()));
+            refreshChart();
+        });
+        statToggles.add(button);
+        statButtons.getChildren().add(button);
+    }
+    ScrollPane statScroller = new ScrollPane(statButtons);
+    statScroller.setFitToHeight(true);
+    statScroller.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+    statScroller.setVbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+    statScroller.setMinHeight(68);
+    statScroller.setPrefHeight(68);
+    statScroller.setStyle("-fx-background: transparent; -fx-background-color: transparent;");
 
-        // Stat toggles — mutually exclusive, first selected by default.
-        HBox statButtons = new HBox(8);
-        statButtons.setAlignment(Pos.CENTER_LEFT);
-        ToggleGroup statGroup = new ToggleGroup();
-        statToggles.clear();
-        for (int i = 0; i < STAT_NAMES.length; i++) {
-            ToggleButton button = new ToggleButton(STAT_NAMES[i]);
-            button.setToggleGroup(statGroup);
-            button.setSelected(i == 0);
-            button.setStyle(chipStyle(button.isSelected()));
-            button.setOnAction(e -> {
-                if (!button.isSelected()) button.setSelected(true); // forbid empty selection
-                for (ToggleButton candidate : statToggles) {
-                    candidate.setStyle(chipStyle(candidate.isSelected()));
-                }
-                refreshChart();
-            });
-            statToggles.add(button);
-            statButtons.getChildren().add(button);
-        }
-        ScrollPane statScroller = new ScrollPane(statButtons);
-        statScroller.setFitToHeight(true);
-        statScroller.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
-        statScroller.setVbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        statScroller.setMinHeight(68);
-        statScroller.setPrefHeight(68);
-        statScroller.setMinViewportHeight(46);
-        statScroller.setStyle("-fx-background: transparent; -fx-background-color: transparent;");
-
-        // Period toggles — mutually exclusive.
-        chartPeriods = new HBox(8);
-        chartPeriods.setAlignment(Pos.CENTER_LEFT);
-        ToggleGroup periodGroup = new ToggleGroup();
-        for (String period : new String[] { "Weekly", "Monthly", "Yearly" }) {
-            ToggleButton button = new ToggleButton(period);
-            button.setToggleGroup(periodGroup);
-            button.setSelected(period.equals(selectedPeriod));
-            button.setStyle(chipStyle(button.isSelected()));
-            button.setOnAction(e -> {
-                if (!button.isSelected()) button.setSelected(true);
-                selectedPeriod = period;
-                syncPeriodButtons();
-                refreshChart();
-                refreshStats();
-            });
-            chartPeriods.getChildren().add(button);
-        }
-
-        CategoryAxis xAxis = new CategoryAxis();
-        xAxis.setLabel("Date");
-        xAxis.setStyle("-fx-tick-label-fill: white; -fx-text-fill: white;");
-
-        NumberAxis yAxis = new NumberAxis();
-        yAxis.setLabel("Total");
-        yAxis.setForceZeroInRange(true);
-        yAxis.setAutoRanging(false);     // ← add
-        yAxis.setLowerBound(0);          // ← add
-        yAxis.setUpperBound(1);          // ← add (updateBounds replaces this)
-        yAxis.setStyle("-fx-tick-label-fill: white; -fx-text-fill: white;");
-
-        chart = new LineChart(xAxis, yAxis);
-        chart.setLegendVisible(false);
-        chart.setAnimated(false);
-        chart.setCreateSymbols(false);
-        chart.setStyle("-fx-background-color: transparent; -fx-plot-background-color: transparent;");
-        chart.setBackground(new Background(new BackgroundFill(Color.TRANSPARENT, null, null)));
-        chart.setMinHeight(220);
-
-        pane.getChildren().addAll(heading, chartSubtitle, chartStatus,
-                statScroller, chartPeriods, chart);
-        VBox.setVgrow(chart, Priority.ALWAYS);
-        return pane;
+    chartPeriods = new HBox(8);
+    chartPeriods.setAlignment(Pos.CENTER_LEFT);
+    ToggleGroup periodGroup = new ToggleGroup();
+    for (String period : new String[] { "Weekly", "Monthly", "Yearly" }) {
+        ToggleButton button = new ToggleButton(period);
+        button.setToggleGroup(periodGroup);
+        button.setSelected(period.equals(selectedPeriod));
+        button.setStyle(chipStyle(button.isSelected()));
+        button.setOnAction(e -> {
+            if (!button.isSelected()) button.setSelected(true);
+            selectedPeriod = period;
+            syncPeriodButtons();
+            refreshChart();
+            refreshStats();
+        });
+        chartPeriods.getChildren().add(button);
     }
 
-    // ============================================================
-    // Stats pane
-    // ============================================================
+    CategoryAxis xAxis = new CategoryAxis();
+    xAxis.setLabel("Date");
+    xAxis.setStyle("-fx-tick-label-fill: white; -fx-text-fill: white;");
 
+    NumberAxis yAxis = new NumberAxis();
+    yAxis.setLabel("Total");
+    yAxis.setForceZeroInRange(true);
+    yAxis.setAutoRanging(false);
+    yAxis.setLowerBound(0);
+    yAxis.setUpperBound(1);
+    yAxis.setStyle("-fx-tick-label-fill: white; -fx-text-fill: white;");
+    chartYAxis = yAxis;
+
+    @SuppressWarnings("unchecked")
+    Axis<Double> yAxisTyped = (Axis<Double>)(Axis<?>) yAxis;
+
+    chart = new VideoGamestatsLineChart<String, Double>(xAxis, yAxisTyped,
+            new String[] {
+                "gradient(90,#ff5f6d,#ffc371);width=1;outline=#7a1f26;outlineWidth=1.5",
+                "#2b8cbe;width=2"
+            },
+            false,
+            true, true);
+    chart.setMinHeight(220);
+
+    // ---- gamePrevis overlay ----
+    gamePrevis = new VBox(4);
+    gamePrevis.setPadding(new Insets(6));
+    Label hint = new Label("Hover a data point to see that session");
+    hint.setStyle("-fx-text-fill: white; -fx-background-color: rgba(0,0,0,0.55); -fx-padding: 2 5 2 5;");
+    gamePrevis.getChildren().add(hint);
+
+    gamePrevisScroll = new ScrollPane(gamePrevis);
+    gamePrevisScroll.setPrefSize(220, 220);
+    gamePrevisScroll.setMaxSize(220, 220);
+    gamePrevisScroll.setStyle("-fx-background: rgba(19,27,43,0.92);"
+            + "-fx-background-color: rgba(19,27,43,0.92);"
+            + "-fx-border-color: #293750; -fx-border-radius: 8;");
+
+    // ---- wire hover: chart point -> gamePrevis ----
+    chart.setPointShape(new Circle(5));   // small visible dot, also the hover target
+    chart.setOnDataPointHover(extra -> {
+        if (extra instanceof GameRecord rec)
+            updateGameRecordInfo(gamePrevis, rec);
+    });
+
+    content.getChildren().addAll(heading, chartSubtitle, chartStatus,
+            statScroller, chartPeriods, chart);
+    VBox.setVgrow(chart, Priority.ALWAYS);
+
+    // ---- assemble ----
+    StackPane stack = new StackPane(content, gamePrevisScroll);
+    StackPane.setAlignment(gamePrevisScroll, Pos.BOTTOM_RIGHT);
+    StackPane.setMargin(gamePrevisScroll, new Insets(0, 20, 20, 0));
+    return stack;
+}
+    static void updateGameRecordInfo(VBox gamePrevis, GameRecord record) {
+    if (gamePrevis == null || record == null) return;
+
+    // Each session stores the bg the user picked at log-time. Fall back to the
+    // current global selection only if that session had none.
+    String bgUri = record.gameOfDayBg != null ? record.gameOfDayBg : gameofdaybg.get();
+    gamePrevis.setBackground(background(bgUri));
+    gamePrevis.getChildren().clear();
+
+    Label dayLabel = new Label(record.day.toString());
+    dayLabel.setStyle("-fx-text-fill: white; -fx-font-weight: bold;"
+            + "-fx-background-color: rgba(0,0,0,0.55); -fx-padding: 2 5 2 5;");
+    gamePrevis.getChildren().add(dayLabel);
+
+    for (int i = 0; i < STAT_NAMES.length - 1 && i < record.values.length; i++) {
+        if (!record.hasValue[i]) continue;
+        Label nl = new Label(STAT_NAMES[i] + ": " + record.values[i]);
+        nl.setStyle("-fx-text-fill: white; -fx-background-color: rgba(0,0,0,0.55);"
+                + "-fx-padding: 1 4 1 4;");
+        gamePrevis.getChildren().add(nl);
+    }
+
+    if (record.gameOfDay != null && !record.gameOfDay.isEmpty()) {
+        Label g = new Label("Game of the day: " + record.gameOfDay);
+        g.setStyle("-fx-text-fill: white; -fx-background-color: rgba(0,0,0,0.55);"
+                + "-fx-padding: 1 4 1 4;");
+        gamePrevis.getChildren().add(g);
+    }
+}
+
+    // ---- Stats pane ----
     private VBox buildStatsPane() {
         VBox pane = new VBox(18);
         pane.setPadding(new Insets(24));
@@ -358,10 +430,7 @@ public class Main extends Application {
         return pane;
     }
 
-    // ============================================================
-    // Tabs
-    // ============================================================
-
+    // ---- Tabs ----
     private void showTab(int index) {
         for (int i = 0; i < tabs.length; i++) {
             tabs[i].setStyle(i == index ? navActiveStyle() : navStyle());
@@ -370,9 +439,40 @@ public class Main extends Application {
         if (index == 1) refreshStats();
     }
 
-    // ============================================================
-    // Add-data dialog
-    // ============================================================
+    // ---- Add data dialog ----
+    private static List<Path> listBackgroundFiles() {
+    List<Path> result = new ArrayList<>();
+    List<Path> candidates = new ArrayList<>();
+    String cwd = new File("").getAbsolutePath();
+    candidates.add(Paths.get(cwd, "files", "bgs"));
+    // Same "java" -> "2026java" trick the toLocalPath helper uses
+    candidates.add(Paths.get(cwd.replace("\\", "/").replace("java", "2026java"),
+                             "files", "bgs"));
+
+    for (Path dir : candidates) {
+        if (!Files.isDirectory(dir)) continue;
+        try (var s = Files.list(dir)) {
+            s.filter(Files::isRegularFile)
+             .filter(p -> {
+                 String n = p.getFileName().toString().toLowerCase();
+                 return n.endsWith(".png") || n.endsWith(".jpg")
+                     || n.endsWith(".jpeg") || n.endsWith(".gif");
+             })
+             .sorted()
+             .forEach(result::add);
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        }
+        if (!result.isEmpty()) break;
+    }
+    return result;
+}
+
+    private static Background background(String url) {
+        BackgroundSize siz = new BackgroundSize(1, 1, true, true, false, false);
+        return new Background(new BackgroundImage(new Image(url), BackgroundRepeat.NO_REPEAT,
+                BackgroundRepeat.NO_REPEAT, BackgroundPosition.CENTER, siz));
+    }
 
     private void showAddDataDialog(Stage owner) {
         Dialog<GameRecord> dialog = new Dialog<>();
@@ -398,8 +498,43 @@ public class Main extends Application {
                 new ColumnConstraints(220), new ColumnConstraints(300));
 
         TextField[] fields = new TextField[STAT_NAMES.length];
+
+        List<Path> bgFiles = listBackgroundFiles();
+VBox bgsCont = new VBox(4);
+bgsCont.setPadding(new Insets(4));
+for (Path bgPath : bgFiles) {
+    Pane np = new Pane();
+    np.setPrefSize(50, 50);
+    np.setMinSize(50, 50);
+    np.setMaxSize(50, 50);
+    String bgUri = bgPath.toUri().toString();
+    np.setBackground(background(bgUri));
+    np.setStyle("-fx-border-color: #293750; -fx-border-width: 1;");
+    np.setOnMouseClicked(ev -> {
+        gameofdaybg.set(bgUri);
+        for (Node c : bgsCont.getChildren()) {
+            if (c instanceof Pane p)
+                p.setStyle("-fx-border-color: #293750; -fx-border-width: 1;");
+        }
+        np.setStyle("-fx-border-color: #5ce1c6; -fx-border-width: 2;");
+    });
+    bgsCont.getChildren().add(np);
+}
+if (bgFiles.isEmpty()) {
+    Label none = new Label("No images in files/bgs");
+    none.setStyle("-fx-text-fill: #9ba9c5;");
+    bgsCont.getChildren().add(none);
+}
+ScrollPane bgVis = new ScrollPane(bgsCont);
+bgVis.setPrefSize(160, 100);
+bgVis.setStyle("-fx-background: #101827;");
+
         for (int i = 0; i < STAT_NAMES.length; i++) {
-            String label = i >= 6 ? STAT_NAMES[i] + " (hours)" : STAT_NAMES[i];
+            String nameStat = STAT_NAMES[i];
+            String label = (i >= 8 && !nameStat.toLowerCase().contains("game of day"))
+                    ? STAT_NAMES[i] + " (hours)"
+                    : (nameStat.toLowerCase().contains("game of day"))
+                            ? nameStat : STAT_NAMES[i];
             Label statLabel = dialogLabel(label);
             statLabel.setWrapText(true);
             statsGrid.add(statLabel, 0, i);
@@ -408,6 +543,8 @@ public class Main extends Application {
             fields[i].setStyle(fieldStyle());
             fields[i].setMaxWidth(Double.MAX_VALUE);
             statsGrid.add(fields[i], 1, i);
+            if (nameStat.toLowerCase().contains("game of day"))
+                statsGrid.add(new HBox(2, new Label("Game of the day Image"), bgVis), 1, i);
         }
         statsGrid.getColumnConstraints().get(1).setHgrow(Priority.ALWAYS);
         form.getChildren().add(statsGrid);
@@ -432,8 +569,8 @@ public class Main extends Application {
 
         dialog.getDialogPane().lookupButton(ButtonType.OK).addEventFilter(
                 javafx.event.ActionEvent.ACTION, event -> {
-                    for (TextField field : fields) {
-                        String text = field.getText().trim();
+                    for (int i = 0; i < fields.length - 1; i++) {
+                        String text = fields[i].getText().trim();
                         if (text.isEmpty()) continue;
                         try {
                             double v = Double.parseDouble(text);
@@ -459,15 +596,16 @@ public class Main extends Application {
 
         dialog.setResultConverter(button -> {
             if (button != ButtonType.OK) return null;
-            double[] values = new double[fields.length];
-            boolean[] hasValue = new boolean[fields.length];
-            for (int i = 0; i < fields.length; i++) {
+            double[] values = new double[fields.length - 1];
+            boolean[] hasValue = new boolean[fields.length - 1];
+            for (int i = 0; i < fields.length - 1; i++) {
                 String text = fields[i].getText().trim();
                 if (!text.isEmpty()) {
                     values[i] = Double.parseDouble(text);
                     hasValue[i] = true;
                 }
             }
+            String gameofday = fields[fields.length - 1].getText();
             List<GameProgress> games = new ArrayList<>();
             for (GameProgressInput input : gameInputs) {
                 String title = input.title.getText().trim();
@@ -476,7 +614,7 @@ public class Main extends Application {
                     games.add(new GameProgress(title, progress));
             }
             return new GameRecord(day.getValue() == null ? LocalDate.now() : day.getValue(),
-                    values, hasValue, games);
+                    values, hasValue, games, gameofday, gameofdaybg.get());
         });
 
         dialog.showAndWait().ifPresent(record -> {
@@ -507,10 +645,7 @@ public class Main extends Application {
         gameInputs.add(new GameProgressInput(title, progress));
     }
 
-    // ============================================================
-    // Background image
-    // ============================================================
-
+    // ---- Background image ----
     private void chooseBackground(Stage owner) {
         FileChooser chooser = new FileChooser();
         chooser.setTitle("Choose a game screenshot or background");
@@ -577,90 +712,92 @@ public class Main extends Application {
             Files.deleteIfExists(DATA_DIRECTORY.resolve(name));
     }
 
-    // ============================================================
-    // Chart refresh (fixed)
-    // ============================================================
-
+    // ---- Chart refresh ----
     private void refreshChart() {
-    if (chart == null) return;
+        if (chart == null) return;
 
-    String selectedStat = null;
-    for (ToggleButton button : statToggles) {
-        if (button.isSelected()) { selectedStat = button.getText(); break; }
-    }
-    if (selectedStat == null) selectedStat = STAT_NAMES[0];
-    int metricIndex = indexOfStat(selectedStat);
-    chartSubtitle.setText(selectedStat + "  \u2022  " + selectedPeriod);
-
-    chart.getData().clear();
-
-    List<ChartBucket> buckets = createBuckets();
-    List<String> categories = new ArrayList<>();
-    boolean anyValueInPeriod = false;
-
-    // One series per contiguous run of buckets that have data.
-    // This gives line gaps WITHOUT ever passing null Y to JavaFX
-    // (null Y triggers an NPE in ValueAxis.invalidateRange).
-    XYChart.Series<String, Double> segment = null;
-    for (ChartBucket bucket : buckets) {
-        double total = 0.0;
-        boolean hasValue = false;
-        for (GameRecord record : records) {
-            if (!record.day.isBefore(bucket.start) && !record.day.isAfter(bucket.end)
-                    && record.hasValue[metricIndex]) {
-                total += record.values[metricIndex];
-                hasValue = true;
-            }
+        String selectedStat = null;
+        for (ToggleButton button : statToggles) {
+            if (button.isSelected()) { selectedStat = button.getText(); break; }
         }
-        categories.add(bucket.label);
+        if (selectedStat == null) selectedStat = STAT_NAMES[0];
+        int metricIndex = indexOfStat(selectedStat);
+        chartSubtitle.setText(selectedStat + "  \u2022  " + selectedPeriod);
 
-        if (hasValue) {
-            anyValueInPeriod = true;
-            if (segment == null) {
-                segment = new XYChart.Series<>();
-                segment.setName(selectedStat);
-                chart.getData().add(segment);
-                // JavaFX assigns a different default colour per series;
-                // force them all to the same colour so it still looks
-                // like one broken line.
-                segment.nodeProperty().addListener((obs, oldNode, newNode) -> {
-                    if (newNode != null)
-                        newNode.setStyle("-fx-stroke: #5ce1c6; -fx-stroke-width: 2px;");
-                });
-            }
-            segment.getData().add(new XYChart.Data<>(bucket.label, total));
-        } else {
-            segment = null;   // next data point starts a fresh segment
+        chart.getData().clear();
+
+        List<ChartBucket> buckets = createBuckets();
+        List<String> categories = new ArrayList<>();
+        boolean anyValueInPeriod = false;
+
+        XYChart.Series<String, Double> segment = null;
+        for (ChartBucket bucket : buckets) {
+    double total = 0.0;
+    List<GameRecord> bucketRecords = new ArrayList<>();
+    for (GameRecord record : records) {
+        if (!record.day.isBefore(bucket.start) && !record.day.isAfter(bucket.end)
+                && metricIndex < record.hasValue.length
+                && record.hasValue[metricIndex]) {
+            total += record.values[metricIndex];
+            bucketRecords.add(record);
         }
     }
+    categories.add(bucket.label);
 
-    ((CategoryAxis) chart.getXAxis())
-            .setCategories(FXCollections.observableArrayList(categories));
-    chartStatus.setText(anyValueInPeriod ? ""
-            : "No \"" + selectedStat + "\" values recorded in this "
-              + selectedPeriod.toLowerCase() + ".");
+    if (!bucketRecords.isEmpty()) {
+        anyValueInPeriod = true;
+        if (segment == null) {
+            segment = new XYChart.Series<>();
+            segment.setName(selectedStat);
+            chart.getData().add(segment);
+            segment.nodeProperty().addListener((obs, oldNode, newNode) -> {
+                if (newNode != null)
+                    newNode.setStyle("-fx-stroke: #5ce1c6; -fx-stroke-width: 2px;");
+            });
+        }
 
-    Platform.runLater(this::updateBounds);
+        // Pick the latest record in this bucket for hover detail.
+        GameRecord latest = bucketRecords.get(0);
+        for (GameRecord r : bucketRecords)
+            if (r.day.isAfter(latest.day)) latest = r;
+
+        XYChart.Data<String, Double> point = new XYChart.Data<>(bucket.label, total);
+        point.setExtraValue(latest);
+        segment.getData().add(point);
+    } else {
+        segment = null;
+    }
 }
 
+        ((CategoryAxis) chart.getXAxis())
+                .setCategories(FXCollections.observableArrayList(categories));
+        chartStatus.setText(anyValueInPeriod ? ""
+                : "No \"" + selectedStat + "\" values recorded in this "
+                  + selectedPeriod.toLowerCase() + ".");
+
+        Platform.runLater(this::updateBounds);
+    }
+
+    @SuppressWarnings("unchecked")
     private void updateBounds() {
         try {
-            NumberAxis yAxis = (NumberAxis) chart.getYAxis();
+        	NumberAxis yAxis = chartYAxis;
+        	if (yAxis == null) return;
             yAxis.setAutoRanging(false);
             double maxY = 0.0;
             double minY = 0.0;
-            for (int i = 0; i< chart.getData().size();i++) {
-              XYChart.Series<String, Double> series = (XYChart.Series<String, Double>)chart.getData().get(i);
+            for (int i = 0; i < chart.getData().size(); i++) {
+                XYChart.Series<String, Double> series =
+                        (XYChart.Series<String, Double>) chart.getData().get(i);
                 if (series == null) continue;
                 for (XYChart.Data<String, Double> data : series.getData()) {
                     if (data == null || data.getYValue() == null) continue;
-                    double val = (double)data.getYValue();
+                    double val = data.getYValue();
                     if (val > maxY) maxY = val;
                     if (val < minY) minY = val;
                 }
             }
             yAxis.setLowerBound(minY);
-            // (3) avoid 0..0 on an empty chart
             yAxis.setUpperBound(maxY > 0 ? maxY : 1.0);
         } catch (Exception ex) {
             ex.printStackTrace();
@@ -692,10 +829,7 @@ public class Main extends Application {
         return buckets;
     }
 
-    // ============================================================
-    // Stats refresh
-    // ============================================================
-
+    // ---- Stats refresh ----
     private void refreshStats() {
         if (statsPane == null) return;
         LocalDate today = LocalDate.now();
@@ -715,7 +849,8 @@ public class Main extends Application {
         for (int i = 0; i < STAT_NAMES.length; i++) {
             double total = 0;
             for (GameRecord record : records) {
-                if (!record.day.isBefore(start) && !record.day.isAfter(end) && record.hasValue[i])
+                if (!record.day.isBefore(start) && !record.day.isAfter(end)
+                        && i < record.values.length && record.hasValue[i])
                     total += record.values[i];
             }
             statValueLabels[i].setText(formatTotal(total));
@@ -738,10 +873,7 @@ public class Main extends Application {
                 : String.join("\n", lines));
     }
 
-    // ============================================================
-    // File I/O
-    // ============================================================
-
+    // ---- File I/O ----
     private void loadSavedData() throws IOException {
         if (!Files.exists(DATA_FILE)) return;
         List<GameRecord> loadedRecords = new ArrayList<>();
@@ -813,7 +945,6 @@ public class Main extends Application {
 
     private void saveData() throws IOException {
         Files.createDirectories(DATA_DIRECTORY);
-        // (7) UUID-based temp name — safe regardless of nickname contents
         Path temporaryFile = Files.createTempFile(DATA_DIRECTORY, "stats-", ".tmp");
         try {
             try (BufferedWriter writer =
@@ -825,7 +956,7 @@ public class Main extends Application {
                 writer.newLine();
                 for (GameRecord record : records) {
                     writer.write("R\t" + record.day);
-                    for (int i = 0; i < STAT_NAMES.length; i++) {
+                    for (int i = 0; i < record.values.length; i++) {
                         writer.write("\t");
                         writer.write(record.hasValue[i] ? Double.toString(record.values[i]) : "-");
                     }
@@ -867,10 +998,7 @@ public class Main extends Application {
         return new IOException("Invalid saved-data format at line " + lineNumber + ".");
     }
 
-    // ============================================================
-    // Helpers
-    // ============================================================
-
+    // ---- Helpers ----
     private void syncPeriodButtons() {
         for (Node node : chartPeriods.getChildren()) {
             if (node instanceof ToggleButton button) {
@@ -941,10 +1069,6 @@ public class Main extends Application {
                         + "-fx-background-radius: 16; -fx-padding: 8 13;";
     }
 
-    // ============================================================
-    // Save on close (mirrors the C++ stub)
-    // ============================================================
-
     public void pushStats() {
         try {
             saveData();
@@ -953,24 +1077,36 @@ public class Main extends Application {
         }
     }
 
-    // ============================================================
-    // Data classes
-    // ============================================================
-
-    private static class GameRecord {
+    // ---- Data classes ----
+    static class GameRecord {
         final LocalDate day;
         final double[] values;
         final boolean[] hasValue;
         final List<GameProgress> games;
+        final String gameOfDay;
+        final String gameOfDayBg;
+
         GameRecord(LocalDate day, double[] values, boolean[] hasValue, List<GameProgress> games) {
             this.day = day;
             this.values = values;
             this.hasValue = hasValue;
             this.games = games;
+            this.gameOfDay = null;
+            this.gameOfDayBg = null;
+        }
+
+        GameRecord(LocalDate day, double[] values, boolean[] hasValue, List<GameProgress> games,
+                   String gameOfDay, String gameOfDayBg) {
+            this.day = day;
+            this.values = values;
+            this.hasValue = hasValue;
+            this.games = games;
+            this.gameOfDay = gameOfDay;
+            this.gameOfDayBg = gameOfDayBg;
         }
     }
 
-    private static class GameProgress {
+    static class GameProgress {
         final String title;
         final String progress;
         GameProgress(String title, String progress) {
